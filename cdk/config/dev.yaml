@@ -23,11 +23,11 @@ app_name: "webarena"
 app_url: ""
 
 tags:
-  tri.owner: "REPLACE_WITH_OWNER"
-  tri.owner.email: "REPLACE_WITH_EMAIL"
-  tri.project: "REPLACE_WITH_PROJECT_CODE"
+  tri.owner: "Andrew Taber"
+  tri.owner.email: "andrew.taber@tri.global"
+  tri.project: "FP:PJ-0097"
   hcai.projectname: "webarena"
-  hcai.stakeholder.email: "REPLACE_WITH_EMAIL"
+  hcai.stakeholder.email: "matt.hong@tri.global"
 
 ############### ENVIRONMENT VARIABLES & SECRETS ###############
 # No environment variables or secrets needed for the pre-built Magento images.
