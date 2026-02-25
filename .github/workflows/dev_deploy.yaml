@@ -8,131 +8,12 @@ on:
 
 jobs:
   # -----------------------------------------------------------------------
-  # Generate a semantic version number used to tag images and the CDK deploy
-  # -----------------------------------------------------------------------
-  generate-semver:
-    runs-on: ubuntu-latest
-    outputs:
-      fullSemVer: ${{ steps.version_step.outputs.GitVersion_FullSemVer }}
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Install GitVersion
-        uses: gittools/actions/gitversion/setup@v1.1.1
-        with:
-          versionSpec: "5.x"
-
-      - name: Determine Version
-        id: version_step
-        uses: gittools/actions/gitversion/execute@v1.1.1
-        with:
-          useConfigFile: true
-          configFilePath: cdk/GitVersion.yml
-
-  # -----------------------------------------------------------------------
-  # Download the pre-built WebArena images and push them to ECR.
-  # Images are processed sequentially (not as a matrix) because they are
-  # large; handling them one at a time keeps disk usage manageable.
-  # -----------------------------------------------------------------------
-  push-images:
-    needs: [generate-semver]
-    runs-on: ubuntu-latest
-    env:
-      fullSemVer: ${{ needs.generate-semver.outputs.fullSemVer }}
-    permissions:
-      id-token: write
-      contents: read
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Free disk space
-        run: |
-          # Remove large pre-installed toolchains not needed for image push
-          sudo rm -rf /usr/share/dotnet
-          sudo rm -rf /usr/local/lib/android
-          sudo rm -rf /opt/ghc
-          sudo rm -rf /usr/local/share/boost
-          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
-          docker system prune -af
-          df -h
-
-      - name: Load Config
-        id: load_config
-        uses: ./cdk/.github/actions/load-yaml-action
-        with:
-          file_path: cdk/config/dev.yaml
-          keys_to_load: "github_actions, app_name"
-
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v3
-        with:
-          role-to-assume: ${{ steps.load_config.outputs['github_actions.aws_deploy_role'] }}
-          aws-region: ${{ steps.load_config.outputs['github_actions.aws_region'] }}
-
-      - name: Login to Amazon ECR
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
-
-      # --- Shopping (storefront) ---
-      # Stream directly into docker load to avoid storing the tar on disk
-      # (tar + expanded layers simultaneously would exhaust runner storage)
-      - name: Load and push shopping to ECR
-        env:
-          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          APP_NAME: ${{ steps.load_config.outputs['app_name'] }}
-        run: |
-          LOAD_OUTPUT=$(curl -fL http://metis.lti.cs.cmu.edu/webarena-images/shopping_final_0712.tar | docker load)
-          echo "$LOAD_OUTPUT"
-          SOURCE=$(echo "$LOAD_OUTPUT" | tail -1 | awk '{print $NF}')
-          ECR_REPO="${REGISTRY}/${APP_NAME}/shopping"
-
-          aws ecr describe-repositories --repository-names "${APP_NAME}/shopping" \
-            || aws ecr create-repository --repository-name "${APP_NAME}/shopping"
-
-          docker tag "$SOURCE" "${ECR_REPO}:${fullSemVer}"
-          docker tag "$SOURCE" "${ECR_REPO}:latest"
-          docker push "${ECR_REPO}:${fullSemVer}"
-          docker push "${ECR_REPO}:latest"
-
-          # Free disk space before processing the next image
-          docker rmi "$SOURCE" || true
-
-      # --- Shopping Admin (merchant CMS) ---
-      - name: Load and push shopping-admin to ECR
-        env:
-          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          APP_NAME: ${{ steps.load_config.outputs['app_name'] }}
-        run: |
-          LOAD_OUTPUT=$(curl -fL http://metis.lti.cs.cmu.edu/webarena-images/shopping_admin_final_0719.tar | docker load)
-          echo "$LOAD_OUTPUT"
-          SOURCE=$(echo "$LOAD_OUTPUT" | tail -1 | awk '{print $NF}')
-          ECR_REPO="${REGISTRY}/${APP_NAME}/shopping-admin"
-
-          aws ecr describe-repositories --repository-names "${APP_NAME}/shopping-admin" \
-            || aws ecr create-repository --repository-name "${APP_NAME}/shopping-admin"
-
-          docker tag "$SOURCE" "${ECR_REPO}:${fullSemVer}"
-          docker tag "$SOURCE" "${ECR_REPO}:latest"
-          docker push "${ECR_REPO}:${fullSemVer}"
-          docker push "${ECR_REPO}:latest"
-
-          docker rmi "$SOURCE" || true
-
-  # -----------------------------------------------------------------------
-  # Deploy infrastructure with CDK using the semver image tag so that ECS
-  # always picks up the latest pushed image.
+  # Deploy infrastructure with CDK.
+  # Pre-built WebArena images are pushed to ECR separately via
+  # scripts/push_webarena_images_to_ecr.sh and tagged as 'latest'.
   # -----------------------------------------------------------------------
   deploy-cdk:
     runs-on: ubuntu-latest
-    needs: [generate-semver, push-images]
-    env:
-      fullSemVer: ${{ needs.generate-semver.outputs.fullSemVer }}
     permissions:
       id-token: write
       contents: read
@@ -188,5 +69,5 @@ jobs:
         run: |
           cd cdk/cdk
           cdk deploy --require-approval never \
-            -c image_tag=${{ env.fullSemVer }} \
+            -c image_tag=latest \
             -c deploy_env=${{ steps.load_config.outputs['env'] }}
