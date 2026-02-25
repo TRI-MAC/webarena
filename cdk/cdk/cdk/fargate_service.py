@@ -166,7 +166,7 @@ class FargateService(Construct):
             },
             entry_point = self.container_entrypoint,
             command = self.container_command,
-            readonly_root_filesystem = True,
+            readonly_root_filesystem = False,
             # For the secrets, we have the parameters that we created
             secrets = service_params.secrets,
             logging = ecs.AwsLogDriver(                       
@@ -174,11 +174,10 @@ class FargateService(Construct):
                 stream_prefix = app_name + "-" + self.service_name
             ),
             health_check = ecs.HealthCheck(
-                #TODO: For now we assume that the 
                 command=self.healthcheck_command,
-                # For now we are extending the timeout duration for the frontend to 60 seconds
-                # If we move to a nodejs-based (not create-react-app) then we might be able to remove this
-                timeout=Duration.seconds(60)
+                timeout=Duration.seconds(60),
+                # Allow enough startup time for heavier services (e.g. Magento + embedded MySQL)
+                start_period=Duration.minutes(5)
             )
         )
 
@@ -196,6 +195,9 @@ class FargateService(Construct):
                 rollback=True
             ),
             enable_execute_command=True,
+            # Give the container time to pass its first ALB health check before
+            # ECS considers the deployment unhealthy (matches container start_period)
+            health_check_grace_period=Duration.minutes(5)
         )
 
 

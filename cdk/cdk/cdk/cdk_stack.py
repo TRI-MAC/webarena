@@ -22,7 +22,6 @@ from .networking import (
 from .cognito import Cognito
 
 from .fargate_service import FargateService
-from .adot_configuration import ADOTConfiguration
 
 class CdkStack(Stack):
     """
@@ -90,15 +89,6 @@ class CdkStack(Stack):
         # We now have everything we need to generate the appropriate parameters
         self.parameters.generate_service_parameters_and_secrets()
 
-        # We create the adot configuration for the stack
-        # TODO: Replace the workspace_id with a configuration-based parameter
-        self.adot_configuration = ADOTConfiguration(self, "adot_configuration",
-            workspace_id="ws-5ee14a48-7d8a-4d34-8c3f-f9ba6a41d97b",
-            region=self.region,
-            account=self.account,
-            base_parameter_path=self.parameters.parameter_base_path
-        )
-
         ########################## ECS CLUSTER #################
         # 1 AWS Fargate Service in Private Subnet
         self.cluster = ecs.Cluster(self, base_id + "-cluster", vpc=self.networking.vpc)
@@ -113,7 +103,6 @@ class CdkStack(Stack):
                 cluster=self.cluster,
                 service_params=self.parameters.service_parameters[service],
             )
-            self.services[service].addOtel(self.adot_configuration)
 
             # We ask the efs storage to attach itself to the service if necessary
             self.storage.attach_storage_to_service(self.services[service])

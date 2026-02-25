@@ -1,0 +1,80 @@
+# WebArena deployment configuration
+# NOTE: This file is checked into git — do not add sensitive values here.
+
+############### AWS CONFIGURATION ###############
+aws:
+  account: "236208139397"
+  region: us-east-1
+  vpcid: "vpc-05d96911c4a3fff9c"
+  cert: ""
+  ecr:
+    url: "236208139397.dkr.ecr.us-east-1.amazonaws.com"
+    region: "us-east-1"
+
+############### GITHUB ACTIONS ###############
+github_actions:
+  aws_region: us-east-1
+  aws_deploy_role: "arn:aws:iam::236208139397:role/GithubActions"
+
+############### GENERAL ###############
+# env must match the filename (webarena)
+env: webarena
+app_name: "webarena"
+app_url: ""
+
+tags:
+  tri.owner: "REPLACE_WITH_OWNER"
+  tri.owner.email: "REPLACE_WITH_EMAIL"
+  tri.project: "REPLACE_WITH_PROJECT_CODE"
+  hcai.projectname: "webarena"
+  hcai.stakeholder.email: "REPLACE_WITH_EMAIL"
+
+############### ENVIRONMENT VARIABLES & SECRETS ###############
+# No environment variables or secrets needed for the pre-built Magento images.
+app_environments: {}
+app_secrets: {}
+
+############### AWS SERVICES ###############
+# No additional AWS services (S3, DynamoDB, EFS, etc.) needed.
+aws_services: {}
+
+############### SERVICES ###############
+# ECR repo names are derived as: {app_name}/{service_key}
+#   webarena/shopping
+#   webarena/shopping-admin
+#
+# Images must be pushed to ECR before deploying (see scripts/push_images_to_ecr.sh).
+# Deploy with: cdk deploy -c deploy_env=webarena -c image_tag=<tag>
+
+app_services:
+  shopping:
+    # 'directory' is used by the CI/CD image pipeline, not by CDK itself.
+    # Pre-built image: shopping_final_0712 (sourced from CMU mirror / Archive.org)
+    directory: "services/shopping"
+    attach_to_load_balancer: true
+    container_ports:
+      - 7770
+    healthcheck:
+      path: "/"
+    enabled_service_connections: {}
+    resource_allocation:
+      # Magento (PHP + embedded MySQL) is memory-intensive.
+      # Valid Fargate combo: 1024 CPU / 2048–8192 MB memory.
+      cpu: 1024
+      memory: 3072
+
+  shopping-admin:
+    # Pre-built image: shopping_admin_final_0719 (sourced from CMU mirror / Archive.org)
+    directory: "services/shopping-admin"
+    attach_to_load_balancer: true
+    container_ports:
+      - 7780
+    healthcheck:
+      path: "/admin"
+    # Route /admin traffic to this service; shopping catches everything else.
+    base_path: "/admin"
+    route_priority: 1
+    enabled_service_connections: {}
+    resource_allocation:
+      cpu: 1024
+      memory: 3072

@@ -130,7 +130,7 @@ class Parameters(Construct):
         )
 
         # We create the empty cognito parameters, these will be filled up from the network construct after
-        self.cognito_parameters = CognitoParameters(**self.__conf.aws_services.amplify)
+        self.cognito_parameters = CognitoParameters(**(self.__conf.aws_services.amplify or {}))
 
         # For each of our services in the config file, we add a fargate service parameters
         self.service_parameters : dict[str, FargateServiceParameters] = {}
