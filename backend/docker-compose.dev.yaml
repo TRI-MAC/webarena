@@ -1,0 +1,15 @@
+version: '3'
+services:
+  backend:
+    extends:
+      file: docker-compose.yaml
+      service: backend
+    # command: opentelemetry-instrument \
+    #   --traces_exporter console \
+    #   --metrics_exporter console \
+    #   --logs_exporter console \
+    #   --service_name dice-server \
+      # fastapi run app/main.py --port 8000
+    command: fastapi run app/main.py --port 8000
+    volumes:
+      - ./app:/app/app

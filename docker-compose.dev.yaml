@@ -1,0 +1,67 @@
+version: '3'
+# We setup the network required for vending aws credentials to the containers that need to test things locally
+networks:
+    # This special network is configured so that the local metadata
+    # service can bind to the specific IP address that ECS uses
+    # in production
+    # Only use this network for any services that require connection to aws
+    credentials_network:
+      driver: bridge
+      ipam:
+          config:
+              - subnet: "169.254.170.0/24"
+                gateway: 169.254.170.1
+    # Traefik network is used for Front end and backend (anything that needs to be routable)
+    traefik_network:
+      driver: bridge
+    # Backend services network is used for backend and databases (so they can communicate)
+    backend_services_network:
+      driver: bridge
+services:
+  reverse-proxy:
+   extends:
+      file: docker-compose.yaml
+      service: reverse-proxy
+  # This container vends credentials to your containers
+  ecs-local-endpoints:
+    extends:
+      file: docker-compose.yaml
+      service: ecs-local-endpoints
+    # The AWS PROFILE MIGHT NEED TO BE CHANGED FOR LOCAL DEV
+    environment:
+      # You can change which AWS CLI Profile is used
+      AWS_PROFILE: "default"
+  backend:
+    extends:
+      file: ./backend/docker-compose.dev.yaml
+      service: backend
+    # THIS SECTION CONNECTS THE BACKEND TO THE ECS-CREDENTIALS NETWORK FOR FETCHING CREDENTIALS
+    depends_on:
+      - ecs-local-endpoints
+    ports: !override
+      - "8000:8000"
+    networks:
+      # We must also make sure that the backend container is on the default network as well as the credentials network
+      traefik_network: 
+      backend_services_network:
+      credentials_network:
+        ipv4_address: "169.254.170.3"
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.backend.rule=Host(`api.cdk-web-app-template.localhost`)
+      - traefik.http.services.backend.loadbalancer.server.port=8000
+      - traefik.docker.network=${COMPOSE_PROJECT_NAME}_traefik_network
+  frontend:
+    extends:
+      file: ./frontend/docker-compose.dev.yaml
+      service: frontend
+    networks:
+      # The frontend should be on the traefik network only
+      traefik_network:
+    ports: !override
+      - "3000:3000"
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.frontend.rule=Host(`cdk-web-app-template.localhost`)
+      - traefik.http.services.frontend.loadbalancer.server.port=3000
+      - traefik.docker.network=${COMPOSE_PROJECT_NAME}_traefik_network

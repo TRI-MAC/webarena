@@ -1,0 +1,12 @@
+version: '3'
+services:
+  frontend:
+    # SET READONLY FILE-SYSTEM AS THIS IS REQUIREMENT
+    read_only: true
+    extends:
+      file: docker-compose.yaml
+      service: frontend
+    volumes:
+      - ./src:/usr/src/app/src
+      - ./public:/usr/src/app/public
+      - ./node_modules:/usr/src/app/node_modules

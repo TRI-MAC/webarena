@@ -1,0 +1,34 @@
+name: Tag Version
+on:
+  workflow_dispatch:
+  # We create patches whenever we push to main
+  push:
+    branches:
+      - main
+jobs:
+  create-patch-file:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write    # This is required for actions/checkout
+    steps:
+      # Checkout the code first
+      - name: Checkout Code
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+      - name: Install GitVersion
+        uses: gittools/actions/gitversion/setup@v1.1.1
+        with:
+          versionSpec: '5.x'
+      - name: Determine Version
+        id: version_step
+        uses: gittools/actions/gitversion/execute@v1.1.1
+        with:
+          useConfigFile: true
+      - name: Get New Tag
+        run: |
+            echo "SemVersion: ${{ steps.version_step.outputs.GitVersion_semVer }}"
+      - name: Create Version Tag
+        run: |
+            git tag ${{ steps.version_step.outputs.GitVersion_semVer }}
+            git push origin ${{ steps.version_step.outputs.GitVersion_semVer }}

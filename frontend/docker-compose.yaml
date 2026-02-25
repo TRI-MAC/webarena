@@ -1,0 +1,23 @@
+version: '3'
+services:
+  frontend:
+    # SET READONLY FILE-SYSTEM AS THIS IS REQUIREMENT
+    read_only: true
+    build:
+      context: .
+      # We target the production image
+      target: frontend
+    # Here we can inject one or more environment files
+    env_file: 
+      - ../config/.env.local.frontend.env
+      # - ../config/.env.local.frontend.secrets.env
+      - ../config/.env.local.services.env
+      - ../config/.env.local.aws_services.env
+    ports:
+      - "80:3000"
+    healthcheck:
+      test: curl -f http://localhost:3000/healthcheck || exit 1
+      interval: 20s
+      timeout: 10s
+      retries: 3
+      start_period: 30s

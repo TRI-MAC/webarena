@@ -1,0 +1,25 @@
+# action.yml
+name: 'Load Yaml'
+description: 'Load Yaml file into outputs'
+inputs:
+  file_path:
+    description: 'File To Load'
+    required: true
+  keys_to_load:
+    description: 'Keys to load'
+    required: false
+  prefix:
+    description: "prefix to apply"
+    required: false
+  max_depth:
+    description: "maximum depth to traverse: 0 = only top level values"
+    required: false
+  key_modification:
+    description: "modification to bring to the keys, options: 'lower', 'upper'"
+    required: false
+  value_modification:
+    description: "modification to bring to the values, options: 'lower', 'upper'"
+    required: false
+runs:
+  using: 'node20'
+  main: 'index.js'
