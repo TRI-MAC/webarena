@@ -1,4 +1,4 @@
-name: WebArena Deploy
+name: Dev Deploy
 
 on:
   workflow_dispatch:
@@ -55,7 +55,7 @@ jobs:
         id: load_config
         uses: ./cdk/.github/actions/load-yaml-action
         with:
-          file_path: cdk/config/webarena.yaml
+          file_path: cdk/config/dev.yaml
           keys_to_load: "github_actions, app_name"
 
       - name: Configure AWS Credentials
@@ -143,7 +143,7 @@ jobs:
         id: load_config
         uses: ./cdk/.github/actions/load-yaml-action
         with:
-          file_path: cdk/config/webarena.yaml
+          file_path: cdk/config/dev.yaml
           keys_to_load: "github_actions, aws, app_name, env"
 
       - name: Configure AWS Credentials

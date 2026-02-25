@@ -17,8 +17,8 @@ github_actions:
   aws_deploy_role: "arn:aws:iam::236208139397:role/GithubActions"
 
 ############### GENERAL ###############
-# env must match the filename (webarena)
-env: webarena
+# env must match the filename (dev)
+env: dev
 app_name: "webarena"
 app_url: ""
 
@@ -44,7 +44,7 @@ aws_services: {}
 #   webarena/shopping-admin
 #
 # Images must be pushed to ECR before deploying (see scripts/push_images_to_ecr.sh).
-# Deploy with: cdk deploy -c deploy_env=webarena -c image_tag=<tag>
+# Deploy with: cdk deploy -c deploy_env=dev -c image_tag=<tag>
 
 app_services:
   shopping:
