@@ -1,0 +1,162 @@
+# MAIN CONFIGURATION FILE FOR THE ENTIRE APPLICATION
+# VARIOUS OTHER FILES (.ENV FILES FOR EXAMPLE) WILL BE DERIVED FROM THIS CONFIGURATION
+
+# NOTE THAT THIS FILE IS CHECKED INTO GIT SO SHOULD NOT CONTAIN SENSITIVE INFORMATION
+
+############### REQUIRED KEYS ###################
+
+############### AWS CONFIGURATION ###############
+# All AWS specific resources that are not referenced in the applications themselves are defined here
+aws:
+  account: "236208139397"
+  region: us-east-1
+  vpcid: "vpc-05d96911c4a3fff9c"
+  cert: ""
+  ecr:
+    url: "236208139397.dkr.ecr.us-east-1.amazonaws.com"
+    region: "us-east-1"
+
+#################  GITHUB ACTIONS CONFIGURATIONS #############
+# This contains the 
+github_actions:
+  aws_region: us-east-1
+  aws_deploy_role: "arn:aws:iam::236208139397:role/GithubActions"
+
+
+############### GENERAL INFORMATION ###############
+# ENV will be used as a key component in the naming scheme. Should be the same as the file name itself
+# All resources will also be tagged with: stack-name and env to make them identifiable more easily
+env: development
+##### IMPORTANT: CHANGING THE APP NAME AFTER INITIAL DEPLOY WILL CAUSE A NEW STACK TO BE CREATED! #######
+### app_name naming requirements:
+#1. Maximum length of 40 characters
+#2. Lowercase only
+#3. Hyphens only, underscores will be replaced by hyphens
+#4. No two or more consecutive hyphens (e.g. "--")
+### Template will automatically correct an app_name that doesn't meet the naming requirements.
+### This serves to ensure there isn't a conflict when generating various AWS resources.
+app_name: "cdk-web-app-template"
+app_url: "REPLACE_WITH_APP_URL"
+
+tags:
+  tri.owner: "REPLACE_WITH_OWNER"
+  tri.owner.email: "REPLACE_WITH_EMAIL" #the email of the person who launched this resource and is responsible for maintaining, stopping, and terminating this resource
+  tri.project: "REPLACE_WITH_PROJECT_CODE" #a special code for each project (or department) that TRI Finance uses to determine which department to bill for this resource https://toyotaresearchinstitute.atlassian.net/wiki/spaces/HSS/pages/2913894417/Tagging+AWS+Resources+for+HCAI#tri.project
+  hcai.projectname: "REPLACE_WITH_PROJECT_NAME" #the name of the HCAI project that this AWS resource is used for
+  hcai.stakeholder.email: "REPLACE_WITH_EMAIL" #the email of the HCAI project stakeholder
+
+############### APP SERVICE INFORMATION ###############
+app_services:
+  # The service names here must be the same as the name of the directory in which the code resides (lowercased)
+  frontend:
+    directory: "frontend"
+    attach_to_load_balancer: true
+    container_ports:
+      - 3000
+    healthcheck:
+      path: "/"
+    # What needs to be connected to this service
+    enabled_service_connections:
+      amplify: true
+  backend:
+    directory: "backend"
+    attach_to_load_balancer: true
+    # image_name: "cdk-web-app-template-backend"
+    # service_name: "cdk-web-app-template-backend-development-service"
+    # container_name: "backend"
+    container_ports:
+      - 8000
+    # entrypoint is optional but allows to run jobs
+    # container_entrypoint:
+    # container_command:
+    #   - "/bin/bash"
+    #   - "-c"
+    #   - "--"
+    healthcheck:
+      path: "/api/health"
+      # command:
+      #   - command
+      #   - in
+      #   - arry
+      #   - form
+    base_path: "/api"
+    route_priority: 1
+    # What needs to be connected to this service - These are optional
+    enabled_service_connections:
+      s3: true
+      dynamodb: true
+      # For EFS we must specify the mount point
+      #TODO: check if we want to standardize this
+      # efs:
+      #   mount_point: "/mnt"
+      # aurora: true
+      # elasticache: true
+    # resource_allocation:
+    #   cpu: 1024
+    #   memory: 2048
+
+############### SERVICE-SPECIFIC ENVIRONMENT VARIABLES ###############
+## DO NOT ADD SENSITIVE VALUES TO THESE AS THEY WILL BE CHECKED-IN TO REPO
+app_environments:
+  frontend:
+    environment_variable1: value
+  # backend:
+
+############## SERVICE SPECIFIC SECRET VALUES #########################
+## REFERENCE THE NAMES OF THE SECRET VALUES TO BE INJECTED ONLY
+## DO NOT ADD ANY VALUES, INSTEAD, WHEN THE ENVIRONMENT IS DEPLOYED PLEASE MODIFY THE VALUES IN SSM
+## THEN FORCE A RE-DEPLOY
+app_secrets:
+  # System wide secrets enable a single secret to be shared by all services (ex: app keys)
+  system_wide:
+    - APP_KEY
+  # frontend:
+    # TEST_SECRET
+    # secret_name1
+    # secret_name2
+  # backend:
+
+
+############## OPTIONAL CONFIGURATION ################
+
+
+################# AWS SERVICE CONNECTION INFORMATION ################
+# AWS Services that may be accessed by other portions of the application
+# Each of the service keys is optional. Having the key will create the appropriate service
+# 
+aws_services:
+  dynamodb:
+    existing_dynamodb: false
+    table_name: ""
+    partition_key: "development-partition-key"
+  s3:
+    # existing_s3 s3 will determine if we use and existing s3 bucket or if we need to deploy one (default)
+    # If deploy s3 is false then data_bucket_resolved_name must be specified.
+    existing_s3: false
+    data_bucket_resolved_name: ""
+  amplify:
+    enabled: false
+  # efs:
+  #   # existing_efs: {
+  #   #   file_system_id: "",
+  #   #   access_point_id: ""
+  #   # }
+  #   # VPC ID: if not provided will use the template's VPC
+  #   # vpcid: "vpc-05d96911c4a3fff9c"
+  #   # Name the volume should have
+  #   volume_name: "dev-template-volume"
+  # aurora:
+  #   existing_aurora: {}
+  #  # To access the aurora database, the information for host, port, username and password will be injected as the AWS_SERVICES_AURORA_CLUSTER_SECRET environment variable
+    # VPC ID: if not provided will use the template's VPC
+    # vpcid: "vpc-05d96911c4a3fff9c"
+  # elasticache:
+  #   existing_exlasticach: {}
+    # vpcid: "vpc-05d96911c4a3fff9c"
+# AWS Amplify should be separate as it needs to be accessed by the frontend
+# Optional: if used will create a cognito user pool for use with Amplify
+# aws_amplify:
+  # enabled: false
+  # If enabled is true, the auth: region: where to create the user pool must be set
+  # auth:
+  #   region: "us-east-1"

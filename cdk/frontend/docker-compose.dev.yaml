@@ -1,0 +1,16 @@
+version: '3'
+services:
+  frontend:
+    extends:
+      file: docker-compose.yaml
+      service: frontend
+    read_only: false
+    command: yarn next dev
+    build:
+      context: .
+      # We target the production image
+      target: development
+    volumes:
+      - ./src:/usr/src/app/src
+      - ./public:/usr/src/app/public
+      - ./node_modules:/usr/src/app/node_modules
