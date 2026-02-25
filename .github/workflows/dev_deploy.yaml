@@ -51,6 +51,17 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
+      - name: Free disk space
+        run: |
+          # Remove large pre-installed toolchains not needed for image push
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /usr/local/share/boost
+          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+          docker system prune -af
+          df -h
+
       - name: Load Config
         id: load_config
         uses: ./cdk/.github/actions/load-yaml-action
@@ -69,17 +80,14 @@ jobs:
         uses: aws-actions/amazon-ecr-login@v2
 
       # --- Shopping (storefront) ---
-      - name: Download shopping image
-        run: |
-          curl -fL -o shopping.tar \
-            http://metis.lti.cs.cmu.edu/webarena-images/shopping_final_0712.tar
-
-      - name: Push shopping to ECR
+      # Stream directly into docker load to avoid storing the tar on disk
+      # (tar + expanded layers simultaneously would exhaust runner storage)
+      - name: Load and push shopping to ECR
         env:
           REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           APP_NAME: ${{ steps.load_config.outputs['app_name'] }}
         run: |
-          LOAD_OUTPUT=$(docker load -i shopping.tar)
+          LOAD_OUTPUT=$(curl -fL http://metis.lti.cs.cmu.edu/webarena-images/shopping_final_0712.tar | docker load)
           echo "$LOAD_OUTPUT"
           SOURCE=$(echo "$LOAD_OUTPUT" | tail -1 | awk '{print $NF}')
           ECR_REPO="${REGISTRY}/${APP_NAME}/shopping"
@@ -93,21 +101,15 @@ jobs:
           docker push "${ECR_REPO}:latest"
 
           # Free disk space before processing the next image
-          rm shopping.tar
           docker rmi "$SOURCE" || true
 
       # --- Shopping Admin (merchant CMS) ---
-      - name: Download shopping-admin image
-        run: |
-          curl -fL -o shopping-admin.tar \
-            http://metis.lti.cs.cmu.edu/webarena-images/shopping_admin_final_0719.tar
-
-      - name: Push shopping-admin to ECR
+      - name: Load and push shopping-admin to ECR
         env:
           REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           APP_NAME: ${{ steps.load_config.outputs['app_name'] }}
         run: |
-          LOAD_OUTPUT=$(docker load -i shopping-admin.tar)
+          LOAD_OUTPUT=$(curl -fL http://metis.lti.cs.cmu.edu/webarena-images/shopping_admin_final_0719.tar | docker load)
           echo "$LOAD_OUTPUT"
           SOURCE=$(echo "$LOAD_OUTPUT" | tail -1 | awk '{print $NF}')
           ECR_REPO="${REGISTRY}/${APP_NAME}/shopping-admin"
@@ -120,7 +122,6 @@ jobs:
           docker push "${ECR_REPO}:${fullSemVer}"
           docker push "${ECR_REPO}:latest"
 
-          rm shopping-admin.tar
           docker rmi "$SOURCE" || true
 
   # -----------------------------------------------------------------------
