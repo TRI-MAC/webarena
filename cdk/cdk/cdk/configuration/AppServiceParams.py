@@ -57,11 +57,13 @@ class AppServiceResourceAllocation():
 
     cpu: cpu request
     memory: Memory Requested
+    ephemeral_storage_gib: (optional) Ephemeral storage in GiB (21-200). Required for large images.
 
     For allowed combinations of CPU / Memory for Fargate please see the following link: https://docs.aws.amazon.com/cdk/api/v2/docs/aws-cdk-lib.aws_ecs.FargateTaskDefinition.html#cpu
     """
     cpu : int = 256
     memory : int = 512
+    ephemeral_storage_gib : Optional[int] = None
 
 
 @dataclass(kw_only=True)

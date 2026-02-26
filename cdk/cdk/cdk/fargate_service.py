@@ -114,7 +114,10 @@ class FargateService(Construct):
 
         self.repository = ecr.Repository.from_repository_name(self,"Repository", repository_name = self.repository_name)
         # We create the task definition
-        self.task_definition = ecs.FargateTaskDefinition(self, "Task", cpu=service_params.resource_allocation.cpu, memory_limit_mib=service_params.resource_allocation.memory)
+        task_def_kwargs = dict(cpu=service_params.resource_allocation.cpu, memory_limit_mib=service_params.resource_allocation.memory)
+        if service_params.resource_allocation.ephemeral_storage_gib is not None:
+            task_def_kwargs["ephemeral_storage_gib"] = service_params.resource_allocation.ephemeral_storage_gib
+        self.task_definition = ecs.FargateTaskDefinition(self, "Task", **task_def_kwargs)
 
         # We set to retain the task definition on removal - this allows to keep track of previous versions to easily revert
         self.task_definition.apply_removal_policy(RemovalPolicy.RETAIN)

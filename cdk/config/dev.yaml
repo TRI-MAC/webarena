@@ -62,6 +62,9 @@ app_services:
       # Valid Fargate combo: 1024 CPU / 2048–8192 MB memory.
       cpu: 1024
       memory: 3072
+      # The shopping image is ~44 GB compressed in ECR; Fargate's default
+      # 20 GiB ephemeral storage is insufficient to pull and extract it.
+      ephemeral_storage_gib: 150
 
   shopping-admin:
     # Pre-built image: shopping_admin_final_0719 (sourced from CMU mirror / Archive.org)
