@@ -20,7 +20,7 @@ github_actions:
 # env must match the filename (dev)
 env: dev
 app_name: "webarena"
-app_url: ""
+app_url: "none"
 
 tags:
   tri.owner: "Andrew Taber"
