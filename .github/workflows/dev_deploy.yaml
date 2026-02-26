@@ -50,21 +50,6 @@ jobs:
             echo "stack_exists=1" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Detect Drift
-        id: drift_detect
-        if: ${{ steps.stack-exists-check.outputs.stack_exists == 1 }}
-        uses: TRI-ML/cdk-drift-check@v0.0.4
-        env:
-          APP_NAME: ${{ steps.load_config.outputs['app_name'] }}
-          ENVIRONMENT: ${{ steps.load_config.outputs['env'] }}
-        with:
-          stack_name: "${{ env.APP_NAME }}-${{ env.ENVIRONMENT }}"
-
-      - name: Show Drift
-        if: steps.drift_detect.outputs.result == 'DRIFTED'
-        run: |
-          echo '${{ steps.drift_detect.outputs.details }}' | python3 -mjson.tool
-
       - name: Run CDK Deploy
         run: |
           cd cdk/cdk
