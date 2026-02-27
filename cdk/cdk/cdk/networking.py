@@ -11,6 +11,7 @@ from aws_cdk import (
     aws_s3 as s3,
     aws_ecs as ecs,
     Tags,
+    Duration,
 )
 
 from pydantic import ConfigDict
@@ -248,6 +249,10 @@ class Networking(Construct):
             protocol=alb.Protocol.HTTP,
             # Accept redirects — Magento returns 302 on paths like /admin
             healthy_http_codes="200-399",
+            # Magento (PHP-FPM) can be slow on cold requests; give it 30s
+            timeout=Duration.seconds(30),
+            interval=Duration.seconds(60),
+            unhealthy_threshold_count=3,
         )
 
         self.targets[id] = new_targets
