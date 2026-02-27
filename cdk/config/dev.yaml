@@ -53,9 +53,12 @@ app_services:
     directory: "services/shopping"
     attach_to_load_balancer: true
     container_ports:
-      - 7770
+      # The container listens on port 80 internally; 7770 is the EC2 host-port
+      # mapping (-p 7770:80) and is not used in Fargate awsvpc networking.
+      - 80
     healthcheck:
-      path: "/"
+      # Magento's built-in health check — returns 200 (DB up) or 500 (DB down)
+      path: "/pub/health_check.php"
     enabled_service_connections: {}
     resource_allocation:
       # Magento (PHP + embedded MySQL) is memory-intensive.
@@ -71,9 +74,11 @@ app_services:
     directory: "services/shopping-admin"
     attach_to_load_balancer: true
     container_ports:
-      - 7780
+      # The container listens on port 80 internally; 7780 is the EC2 host-port
+      # mapping (-p 7780:80) and is not used in Fargate awsvpc networking.
+      - 80
     healthcheck:
-      path: "/admin"
+      path: "/pub/health_check.php"
     # Route /admin traffic to this service; shopping catches everything else.
     base_path: "/admin"
     route_priority: 1
