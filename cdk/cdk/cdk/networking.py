@@ -246,6 +246,8 @@ class Networking(Construct):
         new_targets.configure_health_check(
             path=fargate_service.healthcheck_path,
             protocol=alb.Protocol.HTTP,
+            # Accept redirects — Magento returns 302 on paths like /admin
+            healthy_http_codes="200-399",
         )
 
         self.targets[id] = new_targets
