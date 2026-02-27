@@ -47,19 +47,7 @@ class CdkStack(Stack):
 
         CfnOutput(
             self,
-            "ShoppingURL",
-            value="http://" + self.ec2.instance.instance_public_ip + ":7770",
-            description="WebArena Shopping site",
-        )
-        CfnOutput(
-            self,
-            "ShoppingAdminURL",
-            value="http://" + self.ec2.instance.instance_public_ip + ":7780",
-            description="WebArena Shopping Admin site",
-        )
-        CfnOutput(
-            self,
-            "PublicIP",
-            value=self.ec2.instance.instance_public_ip,
-            description="Public IP of the WebArena EC2 instance",
+            "InstanceId",
+            value=self.ec2.instance.instance_id,
+            description="WebArena EC2 instance ID — look up public IP in EC2 console",
         )
