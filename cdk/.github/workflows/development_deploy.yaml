@@ -6,119 +6,13 @@ on:
     branches:
       - main
 jobs:
-  generate-Semver:
-    runs-on: ubuntu-latest
-    outputs:
-      GitVersion_BranchName: ${{ steps.version_step.outputs.GitVersion_BranchName }}
-      GitVersion_FullSemVer: ${{ steps.version_step.outputs.GitVersion_FullSemVer }}
-    permissions:
-      contents: read    # This is required for actions/checkout
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v2
-        with:
-          fetch-depth: 0
-      - name: Install GitVersion
-        uses: gittools/actions/gitversion/setup@v1.1.1
-        with:
-          versionSpec: '5.x'
-      - name: Determine Version
-        id: version_step
-        uses: gittools/actions/gitversion/execute@v1.1.1
-        with:
-          useConfigFile: true
-  identify-services:
-    runs-on: ubuntu-latest
-    outputs:
-      services: ${{ steps.load_service_names.outputs['app_services'] }}
-    permissions:
-      contents: read    # This is required for actions/checkout
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v2
-        with:
-          fetch-depth: 0
-      - name: Load GithubActions and frontend Config
-        id: load_service_names
-        uses: ./.github/actions/load-yaml-action
-        with:
-          file_path: config/development.yaml
-          keys_to_load: "app_services"
-          max_depth: 0
-          key_modification: "lower"
-          value_modification: sanitize
-  build-push-services:
-    needs: [identify-services, generate-Semver]
-    env:
-      fullSemVer: ${{ needs.generate-Semver.outputs.GitVersion_FullSemVer }}
-    runs-on: ubuntu-latest
-    permissions:
-      id-token: write   # This is required for requesting the JWT
-      contents: read    # This is required for actions/checkout
-    strategy:
-      matrix:
-        service_name: ${{ fromJson(needs.identify-services.outputs.services) }}
-    steps:
-      # Checkout the code first
-      - name: Checkout Code
-        uses: actions/checkout@v2
-      # We read the yaml configuration file for development
-      - name: Load Github Actions AWS Credentials
-        id: load_github_actions_config
-        uses: ./.github/actions/load-yaml-action
-        with:
-          file_path: config/development.yaml
-          keys_to_load: "github_actions"
-      - name: Load Config
-        id: load_config
-        uses: ./.github/actions/load-yaml-action
-        with:
-          file_path: config/development.yaml
-          keys_to_load: "app_name, app_services"
-          key_modification: "lower"
-          value_modification: sanitize
-      # Configure AWS credentials for CDK diff and deploy
-      - name: Load AWS Account
-        uses: aws-actions/configure-aws-credentials@v3
-        with:
-          role-to-assume: ${{ steps.load_github_actions_config.outputs['github_actions.aws_deploy_role'] }}
-          aws-region: ${{ steps.load_github_actions_config.outputs['github_actions.aws_region'] }}
-      - name: Login to Amazon ECR
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
-      - name: Create the repository
-        shell: bash
-        run: |
-          aws ecr describe-repositories --repository-names ${{ steps.load_config.outputs['app_name'] }}/${{ matrix.service_name }} || aws ecr create-repository --repository-name ${{ steps.load_config.outputs['app_name'] }}/${{ matrix.service_name }}
-      - name: Generate Image Tags
-        id: docker-metadata
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ steps.login-ecr.outputs.registry }}/${{ steps.load_config.outputs['app_name'] }}/${{ matrix.service_name }}
-          tags: |
-            type=sha,format=long
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=raw,value=${{ env.fullSemVer }}
-      - name: Build and push
-        uses: docker/build-push-action@v5
-        with:
-          context: ./${{ steps.load_config.outputs[format('app_services.{0}.directory', matrix.service_name)] }}
-          push: true
-          tags: ${{ steps.docker-metadata.outputs.tags }}
-          labels: ${{ steps.docker-metadata.outputs.labels }}
-          # We use the service name as the target (because some build contexts may use the same dockerfile but different targets)
-          target: ${{ matrix.service_name }}
-  # We built the docker images for development
-  # Whenever we have development environment changes we want to deploy cdk
-  # We reference the SHA of the github image so that cdk deploy works properly and automatically creates a new task definition
   deploy-cdk:
     runs-on: ubuntu-latest
-    needs: [generate-Semver, build-push-services]
-    env:
-      fullSemVer: ${{ needs.generate-Semver.outputs.GitVersion_FullSemVer }}
+    outputs:
+      ami_id: ${{ steps.copy-ami.outputs.ami_id }}
     permissions:
-      id-token: write   # This is required for requesting the JWT
-      contents: read    # This is required for actions/checkout
+      id-token: write # This is required for requesting the JWT
+      contents: read # This is required for actions/checkout
     steps:
       # Checkout the code first
       - name: Checkout Code
@@ -136,12 +30,35 @@ jobs:
         with:
           role-to-assume: ${{ steps.load_config.outputs['github_actions.aws_deploy_role'] }}
           aws-region: ${{ steps.load_config.outputs['github_actions.aws_region'] }}
+      # Copy WebArena AMI from us-east-2 to us-east-1 if not already present
+      - name: Copy WebArena AMI to us-east-1
+        id: copy-ami
+        shell: bash
+        run: |
+          EXISTING=$(aws ec2 describe-images --owners self \
+            --filters "Name=name,Values=webarena-with-configurable-map-backend" \
+            --query 'Images[0].ImageId' --output text --region us-east-1)
+          if [ "$EXISTING" != "None" ] && [ -n "$EXISTING" ]; then
+            echo "AMI already exists in us-east-1: $EXISTING"
+            AMI_ID=$EXISTING
+          else
+            echo "Copying AMI from us-east-2 to us-east-1..."
+            AMI_ID=$(aws ec2 copy-image \
+              --source-region us-east-2 \
+              --source-image-id ami-08a862bf98e3bd7aa \
+              --name webarena-with-configurable-map-backend \
+              --region us-east-1 \
+              --query ImageId --output text)
+            echo "Waiting for AMI $AMI_ID to become available..."
+            aws ec2 wait image-available --image-ids "$AMI_ID" --region us-east-1
+          fi
+          echo "ami_id=$AMI_ID" >> "$GITHUB_OUTPUT"
       ## We install CDK
       - name: Install AWS CDK
         run: |
           pip install -r ${PWD}/cdk/requirements.txt
           npm install -g aws-cdk
-      - name : Verify If stack exists
+      - name: Verify If stack exists
         id: stack-exists-check
         env:
           REGION: ${{ steps.load_config.outputs['aws.region'] }}
@@ -167,8 +84,10 @@ jobs:
         shell: bash
         if: steps.drift_detect.outputs.result == 'DRIFTED'
         run: |
-            echo '${{ steps.drift_detect.outputs.details }}' | python3 -mjson.tool
+          echo '${{ steps.drift_detect.outputs.details }}' | python3 -mjson.tool
       - name: Run CDK Deploy
         run: |
           cd ./cdk
-          cdk deploy --require-approval never -c image_tag=${{ env.fullSemVer }} -c deploy_env=${{ steps.load_config.outputs['env'] }}
+          cdk deploy --require-approval never \
+            -c ami_id=${{ steps.copy-ami.outputs.ami_id }} \
+            -c deploy_env=${{ steps.load_config.outputs['env'] }}
