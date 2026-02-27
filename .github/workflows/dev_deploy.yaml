@@ -34,17 +34,6 @@ jobs:
           pip install -r cdk/cdk/requirements.txt
           npm install -g aws-cdk
 
-      - name: Verify if stack exists
-        id: stack-exists-check
-        run: |
-          if ! aws cloudformation describe-stacks \
-            --region ${{ steps.load_config.outputs['aws.region'] }} \
-            --stack-name ${{ steps.load_config.outputs['app_name'] }}-${{ steps.load_config.outputs['env'] }}; then
-            echo "stack_exists=0" >> "$GITHUB_OUTPUT"
-          else
-            echo "stack_exists=1" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Run CDK Deploy
         run: |
           cd cdk/cdk

@@ -48,18 +48,18 @@ class CdkStack(Stack):
         CfnOutput(
             self,
             "ShoppingURL",
-            value="http://" + self.ec2.elastic_ip.attr_public_ip + ":7770",
+            value="http://" + self.ec2.instance.instance_public_ip + ":7770",
             description="WebArena Shopping site",
         )
         CfnOutput(
             self,
             "ShoppingAdminURL",
-            value="http://" + self.ec2.elastic_ip.attr_public_ip + ":7780",
+            value="http://" + self.ec2.instance.instance_public_ip + ":7780",
             description="WebArena Shopping Admin site",
         )
         CfnOutput(
             self,
-            "ElasticIP",
-            value=self.ec2.elastic_ip.attr_public_ip,
-            description="Elastic IP of the WebArena EC2 instance",
+            "PublicIP",
+            value=self.ec2.instance.instance_public_ip,
+            description="Public IP of the WebArena EC2 instance",
         )

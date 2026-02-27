@@ -4,7 +4,6 @@ from constructs import Construct
 from aws_cdk import (
     aws_ec2 as ec2,
     Tags,
-    CfnOutput,
 )
 
 from .configuration.configuration import EC2InstanceParams
@@ -18,13 +17,12 @@ class WebArenaEC2(Construct):
     - Security group allowing open_ports from anywhere
     - EBS root volume (gp3, configurable size)
     - Optional SSH key pair
-    - Elastic IP + association
     - User data that starts the shopping/shopping_admin Docker containers
-      and configures Magento base URLs using the Elastic IP
+      and configures Magento base URLs using the instance's public IP
+      (queried from the EC2 metadata service at boot time)
 
     Attributes:
         instance : ec2.Instance
-        elastic_ip : ec2.CfnEIP
         security_group : ec2.SecurityGroup
     """
 
@@ -54,15 +52,8 @@ class WebArenaEC2(Construct):
                 description=f"Allow TCP {port}",
             )
 
-        # Elastic IP — allocate before the instance so we can embed the IP in user data
-        self.elastic_ip = ec2.CfnEIP(self, "EIP", domain="vpc")
-
         # User data: start containers, wait, then configure Magento base URLs
         user_data = ec2.UserData.for_linux()
-
-        # The EIP public IP is a CloudFormation token that resolves at deploy time.
-        # CDK embeds it via Fn::Sub so the script receives the actual IP.
-        eip_ip = self.elastic_ip.attr_public_ip
 
         user_data.add_commands(
             "set -e",
@@ -75,7 +66,8 @@ class WebArenaEC2(Construct):
             "docker start shopping",
             "docker start shopping_admin",
             "",
-            f'PUBLIC_IP="{eip_ip}"',
+            "# Get public IP from instance metadata service",
+            "PUBLIC_IP=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)",
             "",
             "# Wait for Magento to initialize",
             "sleep 120",
@@ -126,13 +118,5 @@ class WebArenaEC2(Construct):
             )
 
         self.instance = ec2.Instance(self, "Instance", **instance_kwargs)
-
-        # Associate the Elastic IP with the instance
-        ec2.CfnEIPAssociation(
-            self,
-            "EIPAssociation",
-            allocation_id=self.elastic_ip.attr_allocation_id,
-            instance_id=self.instance.instance_id,
-        )
 
         Tags.of(self).add("tri.resource.class", "application")
