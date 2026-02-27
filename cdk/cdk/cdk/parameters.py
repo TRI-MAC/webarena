@@ -32,12 +32,6 @@ class Parameters(Construct):
 
         self.deploy_env = self.node.try_get_context("deploy_env") or "development"
 
-        self.ami_id = self.node.try_get_context("ami_id")
-        if not self.ami_id:
-            raise ValueError(
-                "ami_id context variable is required. Pass it with: cdk deploy -c ami_id=<ami-id>"
-            )
-
         self.__conf = load_configuration("../config/{0}.yaml".format(self.deploy_env))
 
         self.app_name = sanitize_name(self.__conf.app_name)

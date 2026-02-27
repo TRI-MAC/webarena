@@ -23,6 +23,7 @@ class GithubActionsParams:
 
 @dataclass(kw_only=True)
 class EC2InstanceParams:
+    ami_id: str
     instance_type: str = "t3a.xlarge"
     volume_size_gib: int = 1000
     key_pair_name: Optional[str] = None

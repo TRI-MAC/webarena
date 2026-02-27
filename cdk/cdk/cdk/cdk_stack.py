@@ -41,7 +41,7 @@ class CdkStack(Stack):
             self,
             id=base_id + "-EC2",
             vpc=self.networking.vpc,
-            ami_id=self.parameters.ami_id,
+            ami_id=self.parameters.ec2_instance.ami_id,
             params=self.parameters.ec2_instance,
         )
 

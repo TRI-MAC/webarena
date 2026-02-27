@@ -30,6 +30,7 @@ tags:
 
 ############### EC2 INSTANCE CONFIGURATION ###############
 ec2_instance:
+  ami_id: "ami-082d2beba4535598b"
   instance_type: "t3a.xlarge"
   volume_size_gib: 1000
   key_pair_name: "" # Optional: SSH key pair name for instance access

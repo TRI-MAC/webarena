@@ -29,29 +29,6 @@ jobs:
           role-to-assume: ${{ steps.load_config.outputs['github_actions.aws_deploy_role'] }}
           aws-region: ${{ steps.load_config.outputs['github_actions.aws_region'] }}
 
-      - name: Copy WebArena AMI to us-east-1
-        id: copy-ami
-        shell: bash
-        run: |
-          EXISTING=$(aws ec2 describe-images --owners self \
-            --filters "Name=name,Values=webarena-with-configurable-map-backend" \
-            --query 'Images[0].ImageId' --output text --region us-east-1)
-          if [ "$EXISTING" != "None" ] && [ -n "$EXISTING" ]; then
-            echo "AMI already exists in us-east-1: $EXISTING"
-            AMI_ID=$EXISTING
-          else
-            echo "Copying AMI from us-east-2 to us-east-1..."
-            AMI_ID=$(aws ec2 copy-image \
-              --source-region us-east-2 \
-              --source-image-id ami-08a862bf98e3bd7aa \
-              --name webarena-with-configurable-map-backend \
-              --region us-east-1 \
-              --query ImageId --output text)
-            echo "Waiting for AMI $AMI_ID to become available..."
-            aws ec2 wait image-available --image-ids "$AMI_ID" --region us-east-1
-          fi
-          echo "ami_id=$AMI_ID" >> "$GITHUB_OUTPUT"
-
       - name: Install AWS CDK
         run: |
           pip install -r cdk/cdk/requirements.txt
@@ -72,5 +49,4 @@ jobs:
         run: |
           cd cdk/cdk
           cdk deploy --require-approval never \
-            -c ami_id=${{ steps.copy-ami.outputs.ami_id }} \
             -c deploy_env=${{ steps.load_config.outputs['env'] }}
