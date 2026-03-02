@@ -2,6 +2,7 @@ from typing import Optional
 from constructs import Construct
 
 from aws_cdk import (
+    CfnDeletionPolicy,
     aws_ec2 as ec2,
     aws_iam as iam,
     Tags,
@@ -140,8 +141,41 @@ class WebArenaEC2(Construct):
             "",
             "set -e",
             "",
-            "# Wait for Docker daemon",
-            "sleep 30",
+            "# === Persistent data volume ===",
+            "# Stop Docker before moving its data directory to the persistent EBS.",
+            "systemctl stop docker 2>/dev/null || true",
+            "",
+            "# Wait for the data volume to attach (CloudFormation attaches it after",
+            "# instance creation; the loop allows up to 2 min for the attachment).",
+            "for _i in $(seq 1 60); do",
+            "  # On NVMe-based instances /dev/xvdf appears as nvme1n1 (nvme0n1 is root).",
+            "  DATA_DEV=$(lsblk -d -n -o NAME | grep -E '^nvme[1-9]n[0-9]+' | head -1)",
+            "  [ -z \"$DATA_DEV\" ] && DATA_DEV=$(test -b /dev/xvdf && echo xvdf || true)",
+            "  [ -n \"$DATA_DEV\" ] && break",
+            "  sleep 2",
+            "done",
+            "[ -z \"$DATA_DEV\" ] && { echo 'ERROR: data volume not found'; exit 1; }",
+            "DATA_DEV=\"/dev/${DATA_DEV}\"",
+            "echo \"Data volume device: $DATA_DEV\"",
+            "",
+            "if ! blkid \"$DATA_DEV\" &>/dev/null; then",
+            "  echo 'New volume — formatting and migrating Docker data (first boot)...'",
+            "  mkfs.ext4 -F \"$DATA_DEV\"",
+            "  mkdir -p /mnt/docker-data",
+            "  mount \"$DATA_DEV\" /mnt/docker-data",
+            "  rsync -axX /var/lib/docker/ /mnt/docker-data/",
+            "  umount /mnt/docker-data",
+            "fi",
+            "",
+            "mount \"$DATA_DEV\" /var/lib/docker",
+            "echo \"$DATA_DEV /var/lib/docker ext4 defaults,nofail 0 2\" >> /etc/fstab",
+            "echo 'Persistent data volume mounted at /var/lib/docker'",
+            "",
+            "# Start Docker on the persistent volume",
+            "systemctl start docker",
+            "",
+            "# Brief pause for Docker to finish starting",
+            "sleep 10",
             "",
             "# Start WebArena containers and ensure they restart on reboot",
             "docker update --restart=always shopping shopping_admin",
@@ -215,6 +249,27 @@ class WebArenaEC2(Construct):
             )
 
         self.instance = ec2.Instance(self, "Instance", **instance_kwargs)
+
+        # Persistent data volume — survives instance replacement and stack deletion.
+        # All Docker data (container writeable layers, named volumes, MySQL) lives here.
+        self.data_volume = ec2.CfnVolume(
+            self,
+            "DataVolume",
+            availability_zone=self.instance.instance_availability_zone,
+            size=500,
+            volume_type="gp3",
+            encrypted=True,
+        )
+        self.data_volume.cfn_options.deletion_policy = CfnDeletionPolicy.RETAIN
+        self.data_volume.cfn_options.update_replace_policy = CfnDeletionPolicy.RETAIN
+
+        ec2.CfnVolumeAttachment(
+            self,
+            "DataVolumeAttachment",
+            instance_id=self.instance.instance_id,
+            volume_id=self.data_volume.ref,
+            device="/dev/xvdf",
+        )
 
         # The org SCP blocks ec2:DeleteTags for the CFN execution role.
         # Overriding Tags with add_override (which runs after CDK's TagManager)
