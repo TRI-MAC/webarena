@@ -69,6 +69,7 @@ class WebArenaEC2(Construct):
         ami_id: str,
         params: EC2InstanceParams,
         log_group_prefix: str = "/webarena",
+        zone_name: str = "webarena.dev.hcai.tri.global",
         **kwargs,
     ) -> None:
         super().__init__(scope, id, **kwargs)
@@ -151,24 +152,19 @@ class WebArenaEC2(Construct):
             "nohup docker logs -f shopping  >> /var/log/shopping.log       2>&1 &",
             "nohup docker logs -f shopping_admin >> /var/log/shopping_admin.log 2>&1 &",
             "",
-            "# Get private IP from instance metadata service (IMDSv2)",
-            'IMDS_TOKEN=$(curl -s -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")',
-            'PRIVATE_IP=$(curl -s -H "X-aws-ec2-metadata-token: $IMDS_TOKEN" http://169.254.169.254/latest/meta-data/local-ipv4)',
-            "",
             "# Wait for Magento to initialize",
             "sleep 120",
             "",
             "# Configure shopping (port 7770)",
-            'docker exec shopping /var/www/magento2/bin/magento setup:store-config:set --base-url="http://${PRIVATE_IP}:7770"',
-            # Use double quotes so bash expands ${PRIVATE_IP}; single quotes inside for SQL values
-            "docker exec shopping mysql -u magentouser -pMyPassword magentodb -e"
-            " \"UPDATE core_config_data SET value='http://${PRIVATE_IP}:7770/' WHERE path = 'web/secure/base_url';\"",
+            f'docker exec shopping /var/www/magento2/bin/magento setup:store-config:set --base-url="http://shopping.{zone_name}:7770"',
+            f"docker exec shopping mysql -u magentouser -pMyPassword magentodb -e"
+            f" \"UPDATE core_config_data SET value='http://shopping.{zone_name}:7770/' WHERE path = 'web/secure/base_url';\"",
             "docker exec shopping /var/www/magento2/bin/magento cache:flush",
             "",
             "# Configure shopping_admin (port 7780)",
-            'docker exec shopping_admin /var/www/magento2/bin/magento setup:store-config:set --base-url="http://${PRIVATE_IP}:7780"',
-            "docker exec shopping_admin mysql -u magentouser -pMyPassword magentodb -e"
-            " \"UPDATE core_config_data SET value='http://${PRIVATE_IP}:7780/' WHERE path = 'web/secure/base_url';\"",
+            f'docker exec shopping_admin /var/www/magento2/bin/magento setup:store-config:set --base-url="http://shopping-admin.{zone_name}:7780"',
+            f"docker exec shopping_admin mysql -u magentouser -pMyPassword magentodb -e"
+            f" \"UPDATE core_config_data SET value='http://shopping-admin.{zone_name}:7780/' WHERE path = 'web/secure/base_url';\"",
             "docker exec shopping_admin php /var/www/magento2/bin/magento config:set admin/security/password_is_forced 0",
             "docker exec shopping_admin php /var/www/magento2/bin/magento config:set admin/security/password_lifetime 0",
             "docker exec shopping_admin /var/www/magento2/bin/magento cache:flush",

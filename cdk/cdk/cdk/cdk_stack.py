@@ -1,9 +1,11 @@
 from aws_cdk import (
+    Duration,
     Stack,
     CfnOutput,
     RemovalPolicy,
     Tags,
     aws_logs as logs,
+    aws_route53 as route53,
 )
 
 from constructs import Construct
@@ -59,9 +61,25 @@ class CdkStack(Stack):
             log_group_prefix=log_group_prefix,
         )
 
-        CfnOutput(
-            self,
-            "InstanceId",
-            value=self.ec2.instance.instance_id,
-            description="WebArena EC2 instance ID — look up public IP in EC2 console",
+        zone_name = "webarena.dev.hcai.tri.global"
+
+        zone = route53.PrivateHostedZone(
+            self, "HostedZone",
+            zone_name=zone_name,
+            vpc=self.networking.vpc,
         )
+
+        for record_name in ["shopping", "shopping-admin"]:
+            route53.ARecord(
+                self, f"DNS-{record_name}",
+                zone=zone,
+                record_name=record_name,
+                target=route53.RecordTarget.from_ip_addresses(
+                    self.ec2.instance.instance_private_ip
+                ),
+                ttl=Duration.seconds(60),
+            )
+
+        CfnOutput(self, "InstanceId", value=self.ec2.instance.instance_id)
+        CfnOutput(self, "ShoppingUrl", value=f"http://shopping.{zone_name}:7770")
+        CfnOutput(self, "ShoppingAdminUrl", value=f"http://shopping-admin.{zone_name}:7780")
