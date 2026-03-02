@@ -3,10 +3,40 @@ from constructs import Construct
 
 from aws_cdk import (
     aws_ec2 as ec2,
+    aws_iam as iam,
     Tags,
 )
 
 from .configuration.configuration import EC2InstanceParams
+
+# CloudWatch agent config template — CW_LOG_GROUP_PREFIX is replaced at construct time;
+# {instance_id} is a CloudWatch agent runtime variable, not a Python format placeholder.
+_CW_AGENT_CONFIG_TEMPLATE = """{
+  "logs": {
+    "logs_collected": {
+      "files": {
+        "collect_list": [
+          {
+            "file_path": "/var/log/webarena-startup.log",
+            "log_group_name": "CW_LOG_GROUP_PREFIX/startup",
+            "log_stream_name": "{instance_id}",
+            "timestamp_format": "%Y-%m-%dT%H:%M:%S"
+          },
+          {
+            "file_path": "/var/log/shopping.log",
+            "log_group_name": "CW_LOG_GROUP_PREFIX/shopping",
+            "log_stream_name": "{instance_id}"
+          },
+          {
+            "file_path": "/var/log/shopping_admin.log",
+            "log_group_name": "CW_LOG_GROUP_PREFIX/shopping_admin",
+            "log_stream_name": "{instance_id}"
+          }
+        ]
+      }
+    }
+  }
+}"""
 
 
 class WebArenaEC2(Construct):
@@ -14,16 +44,21 @@ class WebArenaEC2(Construct):
     WebArena EC2 Construct
 
     Deploys a single EC2 instance from the WebArena AMI with:
+    - IAM role granting CloudWatch agent and SSM access
     - Security group allowing open_ports from anywhere
     - EBS root volume (gp3, configurable size)
     - Optional SSH key pair
-    - User data that starts the shopping/shopping_admin Docker containers
-      and configures Magento base URLs using the instance's public IP
-      (queried from the EC2 metadata service at boot time)
+    - User data that:
+        1. Installs and configures the CloudWatch agent to stream logs
+        2. Starts the shopping/shopping_admin Docker containers
+        3. Configures Magento base URLs using the instance's private IP
+           (queried from the EC2 metadata service at boot time)
+        4. Streams Docker logs and Magento exception logs to CloudWatch
 
     Attributes:
         instance : ec2.Instance
         security_group : ec2.SecurityGroup
+        role : iam.Role
     """
 
     def __init__(
@@ -33,9 +68,25 @@ class WebArenaEC2(Construct):
         vpc: ec2.IVpc,
         ami_id: str,
         params: EC2InstanceParams,
+        log_group_prefix: str = "/webarena",
         **kwargs,
     ) -> None:
         super().__init__(scope, id, **kwargs)
+
+        # IAM role — CloudWatch agent + SSM (SSM enables in-VPC shell access without SSH)
+        self.role = iam.Role(
+            self,
+            "InstanceRole",
+            assumed_by=iam.ServicePrincipal("ec2.amazonaws.com"),
+            managed_policies=[
+                iam.ManagedPolicy.from_aws_managed_policy_name(
+                    "CloudWatchAgentServerPolicy"
+                ),
+                iam.ManagedPolicy.from_aws_managed_policy_name(
+                    "AmazonSSMManagedInstanceCore"
+                ),
+            ],
+        )
 
         # Security group
         self.security_group = ec2.SecurityGroup(
@@ -52,12 +103,41 @@ class WebArenaEC2(Construct):
                 description=f"Allow TCP {port}",
             )
 
-        # User data: start containers, wait, then configure Magento base URLs
+        cw_config = _CW_AGENT_CONFIG_TEMPLATE.replace(
+            "CW_LOG_GROUP_PREFIX", log_group_prefix
+        )
+
+        # User data: install CW agent, start containers, configure Magento base URLs
         user_data = ec2.UserData.for_linux()
 
         user_data.add_commands(
-            "set -e",
+            # Redirect all output to startup log from the very beginning
             "exec > >(tee /var/log/webarena-startup.log) 2>&1",
+            "",
+            "# --- CloudWatch agent setup (best-effort, runs before set -e) ---",
+            "if ! [ -f /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl ]; then",
+            "  if command -v yum &>/dev/null; then",
+            "    yum install -y amazon-cloudwatch-agent || true",
+            "  else",
+            "    cd /tmp",
+            "    wget -q https://s3.amazonaws.com/amazoncloudwatch-agent/ubuntu/amd64/latest/amazon-cloudwatch-agent.deb",
+            "    dpkg -i -E ./amazon-cloudwatch-agent.deb || true",
+            "  fi",
+            "fi",
+            "",
+            "mkdir -p /opt/aws/amazon-cloudwatch-agent/etc",
+            # Write CW agent config via heredoc (single command with embedded newlines)
+            "cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json << 'CWEOF'\n"
+            + cw_config
+            + "\nCWEOF",
+            "",
+            "# Start CW agent — from this point stdout/stderr stream to CloudWatch",
+            "/opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl"
+            " -a fetch-config -m ec2"
+            " -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json"
+            " -s || true",
+            "",
+            "set -e",
             "",
             "# Wait for Docker daemon",
             "sleep 30",
@@ -66,26 +146,38 @@ class WebArenaEC2(Construct):
             "docker start shopping",
             "docker start shopping_admin",
             "",
+            "# Stream Docker logs to files so CW agent can pick them up",
+            "nohup docker logs -f shopping  >> /var/log/shopping.log       2>&1 &",
+            "nohup docker logs -f shopping_admin >> /var/log/shopping_admin.log 2>&1 &",
+            "",
             "# Get private IP from instance metadata service (IMDSv2)",
             'IMDS_TOKEN=$(curl -s -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")',
-            'PUBLIC_IP=$(curl -s -H "X-aws-ec2-metadata-token: $IMDS_TOKEN" http://169.254.169.254/latest/meta-data/local-ipv4)',
+            'PRIVATE_IP=$(curl -s -H "X-aws-ec2-metadata-token: $IMDS_TOKEN" http://169.254.169.254/latest/meta-data/local-ipv4)',
             "",
             "# Wait for Magento to initialize",
             "sleep 120",
             "",
             "# Configure shopping (port 7770)",
-            'docker exec shopping /var/www/magento2/bin/magento setup:store-config:set --base-url="http://${PUBLIC_IP}:7770"',
+            'docker exec shopping /var/www/magento2/bin/magento setup:store-config:set --base-url="http://${PRIVATE_IP}:7770"',
             "docker exec shopping mysql -u magentouser -pMyPassword magentodb -e"
-            " 'UPDATE core_config_data SET value=\"http://${PUBLIC_IP}:7770/\" WHERE path = \"web/secure/base_url\";'",
+            " 'UPDATE core_config_data SET value=\"http://${PRIVATE_IP}:7770/\" WHERE path = \"web/secure/base_url\";'",
             "docker exec shopping /var/www/magento2/bin/magento cache:flush",
             "",
             "# Configure shopping_admin (port 7780)",
-            'docker exec shopping_admin /var/www/magento2/bin/magento setup:store-config:set --base-url="http://${PUBLIC_IP}:7780"',
+            'docker exec shopping_admin /var/www/magento2/bin/magento setup:store-config:set --base-url="http://${PRIVATE_IP}:7780"',
             "docker exec shopping_admin mysql -u magentouser -pMyPassword magentodb -e"
-            " 'UPDATE core_config_data SET value=\"http://${PUBLIC_IP}:7780/\" WHERE path = \"web/secure/base_url\";'",
+            " 'UPDATE core_config_data SET value=\"http://${PRIVATE_IP}:7780/\" WHERE path = \"web/secure/base_url\";'",
             "docker exec shopping_admin php /var/www/magento2/bin/magento config:set admin/security/password_is_forced 0",
             "docker exec shopping_admin php /var/www/magento2/bin/magento config:set admin/security/password_lifetime 0",
             "docker exec shopping_admin /var/www/magento2/bin/magento cache:flush",
+            "",
+            "# Dump Magento exception + system logs into the shopping log files",
+            "echo '=== shopping exception.log ==='",
+            "docker exec shopping cat /var/www/magento2/var/log/exception.log 2>/dev/null || true",
+            "echo '=== shopping system.log ==='",
+            "docker exec shopping cat /var/www/magento2/var/log/system.log 2>/dev/null || true",
+            "echo '=== shopping_admin exception.log ==='",
+            "docker exec shopping_admin cat /var/www/magento2/var/log/exception.log 2>/dev/null || true",
             "",
             "echo 'WebArena startup complete'",
         )
@@ -100,6 +192,7 @@ class WebArenaEC2(Construct):
             vpc=vpc,
             vpc_subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PRIVATE_WITH_EGRESS),
             security_group=self.security_group,
+            role=self.role,
             user_data=user_data,
             block_devices=[
                 ec2.BlockDevice(

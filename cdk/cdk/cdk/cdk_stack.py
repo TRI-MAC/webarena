@@ -1,7 +1,9 @@
 from aws_cdk import (
     Stack,
     CfnOutput,
+    RemovalPolicy,
     Tags,
+    aws_logs as logs,
 )
 
 from constructs import Construct
@@ -36,6 +38,17 @@ class CdkStack(Stack):
             networking_params=self.parameters.networking_parameters,
         )
 
+        # CloudWatch log groups (30-day retention; destroyed with stack)
+        log_group_prefix = f"/webarena/{self.parameters.deploy_env}"
+        for suffix in ["startup", "shopping", "shopping_admin"]:
+            logs.LogGroup(
+                self,
+                f"LogGroup-{suffix}",
+                log_group_name=f"{log_group_prefix}/{suffix}",
+                retention=logs.RetentionDays.ONE_MONTH,
+                removal_policy=RemovalPolicy.DESTROY,
+            )
+
         # EC2 instance from WebArena AMI
         self.ec2 = WebArenaEC2(
             self,
@@ -43,6 +56,7 @@ class CdkStack(Stack):
             vpc=self.networking.vpc,
             ami_id=self.parameters.ec2_instance.ami_id,
             params=self.parameters.ec2_instance,
+            log_group_prefix=log_group_prefix,
         )
 
         CfnOutput(
