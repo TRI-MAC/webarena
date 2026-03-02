@@ -22,11 +22,11 @@ env: development
 app_name: "webarena"
 
 tags:
-  tri.owner: "REPLACE_WITH_OWNER"
-  tri.owner.email: "REPLACE_WITH_EMAIL"
-  tri.project: "REPLACE_WITH_PROJECT_CODE"
-  hcai.projectname: "REPLACE_WITH_PROJECT_NAME"
-  hcai.stakeholder.email: "REPLACE_WITH_EMAIL"
+  tri.owner: "Andrew Taber"
+  tri.owner.email: "andrew.taber@tri.global"
+  tri.project: "FP:PJ-0097"
+  hcai.projectname: "webarena"
+  hcai.stakeholder.email: "matt.hong@tri.global"
 
 ############### EC2 INSTANCE CONFIGURATION ###############
 ec2_instance:
