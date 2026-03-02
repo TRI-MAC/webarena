@@ -32,6 +32,10 @@ class CdkStack(Stack):
         # Apply stack-level tags
         for key, value in self.parameters.tags.items():
             Tags.of(self).add(key, value)
+        # These were applied by an earlier stack version and must stay to avoid
+        # ec2:DeleteTags calls, which are blocked by the org SCP.
+        Tags.of(self).add("app-name", self.parameters.app_name)
+        Tags.of(self).add("environment", self.parameters.deploy_env)
 
         # VPC
         self.networking = Networking(
