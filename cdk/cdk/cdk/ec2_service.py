@@ -142,7 +142,8 @@ class WebArenaEC2(Construct):
             "# Wait for Docker daemon",
             "sleep 30",
             "",
-            "# Start WebArena containers",
+            "# Start WebArena containers and ensure they restart on reboot",
+            "docker update --restart=always shopping shopping_admin",
             "docker start shopping",
             "docker start shopping_admin",
             "",
@@ -159,14 +160,15 @@ class WebArenaEC2(Construct):
             "",
             "# Configure shopping (port 7770)",
             'docker exec shopping /var/www/magento2/bin/magento setup:store-config:set --base-url="http://${PRIVATE_IP}:7770"',
+            # Use double quotes so bash expands ${PRIVATE_IP}; single quotes inside for SQL values
             "docker exec shopping mysql -u magentouser -pMyPassword magentodb -e"
-            " 'UPDATE core_config_data SET value=\"http://${PRIVATE_IP}:7770/\" WHERE path = \"web/secure/base_url\";'",
+            " \"UPDATE core_config_data SET value='http://${PRIVATE_IP}:7770/' WHERE path = 'web/secure/base_url';\"",
             "docker exec shopping /var/www/magento2/bin/magento cache:flush",
             "",
             "# Configure shopping_admin (port 7780)",
             'docker exec shopping_admin /var/www/magento2/bin/magento setup:store-config:set --base-url="http://${PRIVATE_IP}:7780"',
             "docker exec shopping_admin mysql -u magentouser -pMyPassword magentodb -e"
-            " 'UPDATE core_config_data SET value=\"http://${PRIVATE_IP}:7780/\" WHERE path = \"web/secure/base_url\";'",
+            " \"UPDATE core_config_data SET value='http://${PRIVATE_IP}:7780/' WHERE path = 'web/secure/base_url';\"",
             "docker exec shopping_admin php /var/www/magento2/bin/magento config:set admin/security/password_is_forced 0",
             "docker exec shopping_admin php /var/www/magento2/bin/magento config:set admin/security/password_lifetime 0",
             "docker exec shopping_admin /var/www/magento2/bin/magento cache:flush",
