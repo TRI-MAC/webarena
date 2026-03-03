@@ -51,10 +51,13 @@ class WebArenaEC2(Construct):
     - Optional SSH key pair
     - User data that:
         1. Installs and configures the CloudWatch agent to stream logs
-        2. Starts the shopping/shopping_admin Docker containers
-        3. Configures Magento base URLs using the instance's private IP
-           (queried from the EC2 metadata service at boot time)
-        4. Streams Docker logs and Magento exception logs to CloudWatch
+        2. On first boot: starts Docker from AMI state, waits for MySQL to
+           initialize, then rsyncs only /var/lib/docker/volumes/ to the
+           persistent EBS (image layers stay on the root EBS from the AMI)
+        3. Mounts the persistent EBS at /var/lib/docker/volumes (all boots)
+        4. Starts the shopping/shopping_admin Docker containers
+        5. Configures Magento base URLs using the instance's private IP
+        6. Streams Docker logs and Magento exception logs to CloudWatch
 
     Attributes:
         instance : ec2.Instance
@@ -142,7 +145,8 @@ class WebArenaEC2(Construct):
             "set -e",
             "",
             "# === Persistent data volume ===",
-            "# Stop Docker before moving its data directory to the persistent EBS.",
+            "# Stop Docker immediately — prevent containers from using wrong volumes",
+            "# before the persistent EBS is mounted.",
             "systemctl stop docker 2>/dev/null || true",
             "",
             "# Wait for the data volume to attach (CloudFormation attaches it after",
@@ -158,23 +162,39 @@ class WebArenaEC2(Construct):
             "DATA_DEV=\"/dev/${DATA_DEV}\"",
             "echo \"Data volume device: $DATA_DEV\"",
             "",
+            "# First boot only: start Docker from AMI state, let MySQL initialize into",
+            "# /var/lib/docker/volumes on the root EBS, then migrate just the volumes",
+            "# directory to the persistent EBS. Image layers (overlay2) stay on root EBS",
+            "# — they're baked into the AMI and don't need to persist.",
             "if ! blkid \"$DATA_DEV\" &>/dev/null; then",
-            "  echo 'New volume — formatting and migrating Docker data (first boot)...'",
+            "  echo 'First boot: starting Docker from AMI to initialize named volumes...'",
+            "  systemctl start docker",
+            "  sleep 10",
+            "  docker update --restart=always shopping shopping_admin",
+            "  docker start shopping",
+            "  docker start shopping_admin",
+            "  echo 'Waiting for MySQL to initialize (first boot)...'",
+            "  sleep 120",
+            "  docker stop shopping shopping_admin 2>/dev/null || true",
+            "  systemctl stop docker",
+            "",
+            "  echo 'Migrating named volumes to persistent EBS...'",
             "  mkfs.ext4 -F \"$DATA_DEV\"",
-            "  mkdir -p /mnt/docker-data",
-            "  mount \"$DATA_DEV\" /mnt/docker-data",
-            "  rsync -axX /var/lib/docker/ /mnt/docker-data/",
-            "  umount /mnt/docker-data",
+            "  mkdir -p /mnt/vol-tmp",
+            "  mount \"$DATA_DEV\" /mnt/vol-tmp",
+            "  rsync -axX /var/lib/docker/volumes/ /mnt/vol-tmp/",
+            "  umount /mnt/vol-tmp",
+            "  echo 'Volumes migrated.'",
             "fi",
             "",
-            "mount \"$DATA_DEV\" /var/lib/docker",
-            "echo \"$DATA_DEV /var/lib/docker ext4 defaults,nofail 0 2\" >> /etc/fstab",
-            "echo 'Persistent data volume mounted at /var/lib/docker'",
+            "# Mount persistent EBS at /var/lib/docker/volumes (all boots)",
+            "mkdir -p /var/lib/docker/volumes",
+            "mount \"$DATA_DEV\" /var/lib/docker/volumes",
+            "echo \"$DATA_DEV /var/lib/docker/volumes ext4 defaults,nofail 0 2\" >> /etc/fstab",
+            "echo 'Persistent volumes mounted at /var/lib/docker/volumes'",
             "",
-            "# Start Docker on the persistent volume",
+            "# Start Docker with persistent volumes in place",
             "systemctl start docker",
-            "",
-            "# Brief pause for Docker to finish starting",
             "sleep 10",
             "",
             "# Start WebArena containers and ensure they restart on reboot",
@@ -190,7 +210,7 @@ class WebArenaEC2(Construct):
             'IMDS_TOKEN=$(curl -s -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")',
             'PRIVATE_IP=$(curl -s -H "X-aws-ec2-metadata-token: $IMDS_TOKEN" http://169.254.169.254/latest/meta-data/local-ipv4)',
             "",
-            "# Wait for Magento to initialize",
+            "# Wait for Magento to be ready for web requests",
             "sleep 120",
             "",
             "# Configure shopping (port 7770)",
