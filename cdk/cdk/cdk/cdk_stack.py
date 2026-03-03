@@ -66,7 +66,7 @@ class CdkStack(Stack):
         zone_name = "webarena.dev.hcai.tri.global"
 
         zone = route53.PublicHostedZone(
-            self, "HostedZone",
+            self, "PublicHostedZone",
             zone_name=zone_name,
         )
 
