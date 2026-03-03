@@ -65,10 +65,9 @@ class CdkStack(Stack):
 
         zone_name = "webarena.dev.hcai.tri.global"
 
-        zone = route53.PrivateHostedZone(
+        zone = route53.PublicHostedZone(
             self, "HostedZone",
             zone_name=zone_name,
-            vpc=self.networking.vpc,
         )
 
         for record_name in ["shopping", "shopping-admin"]:
@@ -86,3 +85,4 @@ class CdkStack(Stack):
         CfnOutput(self, "DataVolumeId", value=self.ec2.data_volume.ref)
         CfnOutput(self, "ShoppingUrl", value=f"http://shopping.{zone_name}:7770")
         CfnOutput(self, "ShoppingAdminUrl", value=f"http://shopping-admin.{zone_name}:7780")
+        CfnOutput(self, "ZoneNameServers", value=zone.hosted_zone_name_servers)
