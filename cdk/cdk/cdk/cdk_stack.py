@@ -1,5 +1,6 @@
 from aws_cdk import (
     Duration,
+    Fn,
     Stack,
     CfnOutput,
     RemovalPolicy,
@@ -85,4 +86,4 @@ class CdkStack(Stack):
         CfnOutput(self, "DataVolumeId", value=self.ec2.data_volume.ref)
         CfnOutput(self, "ShoppingUrl", value=f"http://shopping.{zone_name}:7770")
         CfnOutput(self, "ShoppingAdminUrl", value=f"http://shopping-admin.{zone_name}:7780")
-        CfnOutput(self, "ZoneNameServers", value=zone.hosted_zone_name_servers)
+        CfnOutput(self, "ZoneNameServers", value=Fn.join(", ", zone.hosted_zone_name_servers))
