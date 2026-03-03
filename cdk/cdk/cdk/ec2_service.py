@@ -231,6 +231,7 @@ class WebArenaEC2(Construct):
             security_group=self.security_group,
             role=self.role,
             user_data=user_data,
+            user_data_causes_replacement=True,
             block_devices=[
                 ec2.BlockDevice(
                     device_name="/dev/sda1",
@@ -282,10 +283,10 @@ class WebArenaEC2(Construct):
             {"Key": "Name", "Value": "webarena-development/webarena-development-EC2/Instance"},
             {"Key": "app-name", "Value": "webarena"},
             {"Key": "environment", "Value": "development"},
-            {"Key": "hcai.projectname", "Value": "REPLACE_WITH_PROJECT_NAME"},
-            {"Key": "hcai.stakeholder.email", "Value": "REPLACE_WITH_EMAIL"},
-            {"Key": "tri.owner", "Value": "REPLACE_WITH_OWNER"},
-            {"Key": "tri.owner.email", "Value": "REPLACE_WITH_EMAIL"},
-            {"Key": "tri.project", "Value": "REPLACE_WITH_PROJECT_CODE"},
+            {"Key": "hcai.projectname", "Value": "webarena"},
+            {"Key": "hcai.stakeholder.email", "Value": "matt.hong@tri.global"},
+            {"Key": "tri.owner", "Value": "Andrew Taber"},
+            {"Key": "tri.owner.email", "Value": "andrew.taber@tri.global"},
+            {"Key": "tri.project", "Value": "FP:PJ-0097"},
             {"Key": "tri.resource.class", "Value": "application"},
         ])
